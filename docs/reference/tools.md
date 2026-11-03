@@ -51,6 +51,29 @@ Every tool declares all four MCP annotations — `readOnlyHint`, `destructiveHin
 the family: it is `readOnlyHint: true` until `IMAP_DOWNLOAD_DIR` is set, because from
 then on it writes files.
 
+## Native Gmail search
+
+`list_messages` accepts an optional `gmail_query` for Gmail's native search
+syntax, for example:
+
+```json
+{
+  "gmail_query": "has:attachment filename:pdf after:2024/01/01",
+  "limit": 20
+}
+```
+
+The server must advertise `X-GM-EXT-1`; otherwise the tool returns an error
+without running a search. The query is passed through ImapFlow as `X-GM-RAW`,
+combined with the other filters using AND, and restricted to the selected
+mailbox. A query such as `in:anywhere` does not expand that mailbox selection.
+Queries must be nonblank, at most 256 characters, and contain no CR, LF or NUL.
+The existing summary-only results and `offset`/`next_offset` pagination apply.
+This exposes Gmail's search syntax; it does not add semantic search or guarantee
+that a broad query will be fast.
+
+See [Google's IMAP extensions](https://developers.google.com/workspace/gmail/imap/imap-extensions#extension_of_the_search_command_x-gm-raw).
+
 ## Reading a document
 
 `get_attachments` takes a `mode`. `auto` reads small text and images inline, saves to

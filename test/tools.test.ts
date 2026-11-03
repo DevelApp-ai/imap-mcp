@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   call,
@@ -391,6 +391,80 @@ describe('list_mailboxes', () => {
 });
 
 describe('list_messages', () => {
+  it('uses a Gmail-only query without falling back to ALL', async () => {
+    const harness = await connect();
+    harness.imap.capabilities.set('X-GM-EXT-1', true);
+    const search = vi.spyOn(harness.imap, 'search').mockResolvedValue([]);
+    const result = await call(harness.client, 'list_messages', {
+      gmail_query: 'filename:pdf',
+    });
+    expect(result.isError).not.toBe(true);
+    expect(search).toHaveBeenCalledWith(
+      { gmraw: 'filename:pdf' },
+      { uid: true }
+    );
+    expect(jsonOf(result)).toMatchObject({ total_matching: 0, messages: [] });
+    await harness.close();
+  });
+
+  it('passes Gmail syntax unchanged and combines it with standard filters', async () => {
+    const harness = await connect();
+    harness.imap.capabilities.set('X-GM-EXT-1', true);
+    const search = vi
+      .spyOn(harness.imap, 'search')
+      .mockResolvedValue([1, 2, 3]);
+    const gmailQuery =
+      'from:(anna@example.net OR bob@example.net) has:attachment';
+    const result = await call(harness.client, 'list_messages', {
+      gmail_query: gmailQuery,
+      seen: false,
+      limit: 1,
+      offset: 1,
+    });
+    expect(result.isError).not.toBe(true);
+    expect(search).toHaveBeenCalledWith(
+      { gmraw: gmailQuery, seen: false },
+      { uid: true }
+    );
+    expect(jsonOf(result)).toMatchObject({
+      total_matching: 3,
+      returned: 1,
+      next_offset: 2,
+      messages: [{ uid: 2 }],
+    });
+    expect(harness.imap.lockLog).toContainEqual({
+      path: 'INBOX',
+      readOnly: true,
+    });
+    await harness.close();
+  });
+
+  it('refuses Gmail queries on servers without the extension before searching', async () => {
+    const harness = await connect();
+    const result = await call(harness.client, 'list_messages', {
+      gmail_query: 'has:attachment',
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('X-GM-EXT-1');
+    expect(harness.imap.calls.some((entry) => entry.name === 'search')).toBe(
+      false
+    );
+    await harness.close();
+  });
+
+  it.each(['', '   ', 'x'.repeat(257), 'x\r\nLOGOUT', 'x\0y'])(
+    'rejects an invalid Gmail query %j before opening the mailbox',
+    async (gmailQuery) => {
+      const harness = await connect();
+      const result = await call(harness.client, 'list_messages', {
+        gmail_query: gmailQuery,
+      });
+      expect(result.isError).toBe(true);
+      expect(harness.imap.lockLog).toHaveLength(0);
+      await harness.close();
+    }
+  );
+
   it('returns summaries newest first', async () => {
     const harness = await connect();
     const payload = jsonOf(await call(harness.client, 'list_messages')) as {

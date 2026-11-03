@@ -325,7 +325,7 @@ export function registerReadTools(
       title: 'List and search messages',
       description:
         'Lists messages newest first, optionally narrowed by sender, recipient, ' +
-        'subject, body text, date range or flags. With no criteria it simply ' +
+        'subject, body text, date range, flags or a native Gmail query. With no criteria it simply ' +
         'pages through the mailbox. Every filter is applied by the mail server, ' +
         'so searching a large folder is cheap. Returns summaries only — use ' +
         'get_message for the body.',
@@ -341,6 +341,14 @@ export function registerReadTools(
         body: searchTextParam.describe(
           'Substring to match in the message body.'
         ),
+        gmail_query: searchTextParam
+          .refine(
+            (value) => value === undefined || value.trim().length > 0,
+            'must not be blank'
+          )
+          .describe(
+            'Native Gmail search syntax, e.g. "has:attachment filename:pdf". Requires X-GM-EXT-1; combined with other filters using AND, within the selected mailbox.'
+          ),
         since: dateParam.describe(
           'Only messages received on or after this date (YYYY-MM-DD).'
         ),
@@ -383,6 +391,14 @@ export function registerReadTools(
         const limit = args.limit ?? client.maxMessages;
         const offset = args.offset ?? 0;
         return client.withMailbox(args.mailbox, true, async (connection) => {
+          if (
+            args.gmail_query !== undefined &&
+            !connection.capabilities.has('X-GM-EXT-1')
+          ) {
+            throw new ToolInputError(
+              'imap-mcp: gmail_query requires a server advertising X-GM-EXT-1. Use the standard search filters on this server.'
+            );
+          }
           const query = buildSearch(args);
           const uids = (await client.search(connection, query)).toSorted(
             (a, b) => b - a
@@ -1022,6 +1038,7 @@ function buildSearch(args: {
   to?: string | undefined;
   subject?: string | undefined;
   body?: string | undefined;
+  gmail_query?: string | undefined;
   since?: string | undefined;
   before?: string | undefined;
   seen?: boolean | undefined;
@@ -1033,6 +1050,7 @@ function buildSearch(args: {
   if (args.to !== undefined) query.to = args.to;
   if (args.subject !== undefined) query.subject = args.subject;
   if (args.body !== undefined) query.body = args.body;
+  if (args.gmail_query !== undefined) query.gmraw = args.gmail_query;
   if (args.since !== undefined)
     query.since = new Date(`${args.since}T00:00:00Z`);
   if (args.before !== undefined)
