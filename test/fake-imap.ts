@@ -30,6 +30,7 @@ export interface FakeMessage {
   body: string;
   html?: string;
   messageId?: string;
+  threadId?: string;
   attachments?: FakeAttachment[];
   /** Extra raw header lines, written into the source as given. */
   headers?: string[];
@@ -254,6 +255,8 @@ export class FakeImap extends EventEmitter implements ImapConnection {
         return false;
       if (query.keyword !== undefined && !candidate.flags.has(query.keyword))
         return false;
+      if (query.threadId !== undefined && candidate.threadId !== query.threadId)
+        return false;
       if (query.unKeyword !== undefined && candidate.flags.has(query.unKeyword))
         return false;
       if (
@@ -449,6 +452,9 @@ function toFetchObject(
       from: [fake.from],
       to: fake.to,
     };
+  }
+  if (query.threadId === true && fake.threadId !== undefined) {
+    object.threadId = fake.threadId;
   }
   if (query.bodyStructure === true) {
     object.bodyStructure = buildStructure(fake);

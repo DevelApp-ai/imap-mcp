@@ -680,6 +680,47 @@ describe('list_new_messages', () => {
 });
 
 describe('get_message', () => {
+  it('uses Gmail thread IDs to find only messages in the conversation', async () => {
+    const harness = await connect({
+      mailboxes: [
+        {
+          path: 'INBOX',
+          messages: [
+            message(1, { threadId: '123' }),
+            message(2, { threadId: '123' }),
+            message(3, { threadId: '456' }),
+          ],
+        },
+      ],
+    });
+    harness.imap.capabilities.set('X-GM-EXT-1', true);
+
+    const result = await call(harness.client, 'get_message', {
+      uid: 1,
+      include_thread: true,
+    });
+    const content = result.structuredContent as {
+      thread: Array<{ uid: number }>;
+    };
+    expect(content.thread.map((entry) => entry.uid)).toEqual([2, 1]);
+    expect(
+      harness.imap.calls.filter((entry) => entry.name === 'search')
+    ).toEqual([{ name: 'search', args: [{ threadId: '123' }] }]);
+    await harness.close();
+  });
+
+  it('keeps header search for servers without Gmail extensions', async () => {
+    const harness = await connect();
+    await call(harness.client, 'get_message', {
+      uid: 1,
+      include_thread: true,
+    });
+    const search = harness.imap.calls.find((entry) => entry.name === 'search');
+    expect(search?.args[0]).toHaveProperty('or');
+    expect(search?.args[0]).not.toHaveProperty('threadId');
+    await harness.close();
+  });
+
   it('fences the body and separates the server metadata', async () => {
     const harness = await connect();
     const result = await call(harness.client, 'get_message', { uid: 2 });

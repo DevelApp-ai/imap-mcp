@@ -585,6 +585,7 @@ export function registerReadTools(
           const message = await fetchOne(connection, uid, {
             uid: true,
             envelope: true,
+            threadId: include_thread === true,
             bodyStructure: true,
             source: { maxLength: MAX_SOURCE_BYTES },
           });
@@ -621,7 +622,12 @@ export function registerReadTools(
 
           const thread =
             include_thread === true
-              ? await threadSummaries(client, connection, rendered)
+              ? await threadSummaries(
+                  client,
+                  connection,
+                  rendered,
+                  message.threadId
+                )
               : undefined;
 
           // The budgeted *value*, used for both channels. The text block used
@@ -1065,40 +1071,36 @@ function buildSearch(args: {
   return query;
 }
 
-/**
- * Finds the other messages of a conversation.
- *
- * Threading is reconstructed from the References chain rather than from a
- * server extension, because OBJECTID/X-GM-EXT-1 are far from universal. The
- * number of terms is capped: a long thread carries dozens of ids and each one
- * becomes a header search.
- */
+/** Finds conversation summaries in the selected mailbox. */
 async function threadSummaries(
   client: ImapClient,
   connection: ImapConnection,
   rendered: {
     metadata: { messageId: string | undefined; references: string[] };
-  }
+  },
+  threadId: string | undefined
 ): Promise<MessageSummary[]> {
-  // The whole chain, not just this message's own id: a reply three levels down
-  // references its ancestors, and searching only for the current id finds the
-  // direct answers to it and nothing else.
-  const ids = threadIdsOf({
-    messageId: rendered.metadata.messageId,
-    references: rendered.metadata.references,
-  }).slice(0, MAX_THREAD_TERMS);
-  if (ids.length === 0) return [];
-  const uids = await client.search(
-    connection,
-    {
-      or: ids.flatMap((id) => [
-        { header: { 'message-id': id } },
-        { header: { references: id } },
-        { header: { 'in-reply-to': id } },
-      ]),
-    },
-    'empty'
-  );
+  let uids: number[];
+  if (connection.capabilities.has('X-GM-EXT-1') && threadId !== undefined) {
+    uids = await client.search(connection, { threadId }, 'empty');
+  } else {
+    const ids = threadIdsOf({
+      messageId: rendered.metadata.messageId,
+      references: rendered.metadata.references,
+    }).slice(0, MAX_THREAD_TERMS);
+    if (ids.length === 0) return [];
+    uids = await client.search(
+      connection,
+      {
+        or: ids.flatMap((id) => [
+          { header: { 'message-id': id } },
+          { header: { references: id } },
+          { header: { 'in-reply-to': id } },
+        ]),
+      },
+      'empty'
+    );
+  }
   const messages = await client.fetchSummaries(
     connection,
     uids.slice(0, MAX_THREAD_TERMS * 10)
