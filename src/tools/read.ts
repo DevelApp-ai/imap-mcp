@@ -325,7 +325,7 @@ export function registerReadTools(
       title: 'List and search messages',
       description:
         'Lists messages newest first, optionally narrowed by sender, recipient, ' +
-        'subject, body text, date range or flags. With no criteria it simply ' +
+        'subject, body text, date range, flags or a native Gmail query. With no criteria it simply ' +
         'pages through the mailbox. Every filter is applied by the mail server, ' +
         'so searching a large folder is cheap. Returns summaries only — use ' +
         'get_message for the body.',
@@ -341,6 +341,14 @@ export function registerReadTools(
         body: searchTextParam.describe(
           'Substring to match in the message body.'
         ),
+        gmail_query: searchTextParam
+          .refine(
+            (value) => value === undefined || value.trim().length > 0,
+            'must not be blank'
+          )
+          .describe(
+            'Gmail search syntax, e.g. "has:attachment filename:pdf". Gmail only: the server must advertise X-GM-EXT-1 (see get_server_info). Combined with the other filters using AND and confined to the selected mailbox; to search the whole account, select the folder list_mailboxes marks \\All, e.g. "[Gmail]/All Mail". Gmail ignores syntax it cannot parse, so a malformed query can match the whole folder.'
+          ),
         since: dateParam.describe(
           'Only messages received on or after this date (YYYY-MM-DD).'
         ),
@@ -383,10 +391,18 @@ export function registerReadTools(
         const limit = args.limit ?? client.maxMessages;
         const offset = args.offset ?? 0;
         return client.withMailbox(args.mailbox, true, async (connection) => {
+          if (
+            args.gmail_query !== undefined &&
+            !connection.capabilities.has('X-GM-EXT-1')
+          ) {
+            throw new ToolInputError(
+              'imap-mcp: gmail_query requires a server advertising X-GM-EXT-1. Use the standard search filters on this server.'
+            );
+          }
           const query = buildSearch(args);
-          const uids = (await client.search(connection, query)).toSorted(
-            (a, b) => b - a
-          );
+          const uids = (
+            await client.search(connection, query, 'throw')
+          ).toSorted((a, b) => b - a);
           const page = uids.slice(offset, offset + limit);
           const messages = await client.fetchSummaries(connection, page);
           // The next offset lives in the payload rather than in the truncation
@@ -477,9 +493,11 @@ export function registerReadTools(
               );
             }
             const uids = (
-              await client.search(connection, {
-                unKeyword: client.seenKeyword,
-              })
+              await client.search(
+                connection,
+                { unKeyword: client.seenKeyword },
+                'throw'
+              )
             ).toSorted((a, b) => b - a);
             const page = uids.slice(0, limit);
             const messages = await client.fetchSummaries(connection, page);
@@ -1028,6 +1046,7 @@ function buildSearch(args: {
   to?: string | undefined;
   subject?: string | undefined;
   body?: string | undefined;
+  gmail_query?: string | undefined;
   since?: string | undefined;
   before?: string | undefined;
   seen?: boolean | undefined;
@@ -1039,6 +1058,7 @@ function buildSearch(args: {
   if (args.to !== undefined) query.to = args.to;
   if (args.subject !== undefined) query.subject = args.subject;
   if (args.body !== undefined) query.body = args.body;
+  if (args.gmail_query !== undefined) query.gmraw = args.gmail_query;
   if (args.since !== undefined)
     query.since = new Date(`${args.since}T00:00:00Z`);
   if (args.before !== undefined)
@@ -1062,20 +1082,24 @@ async function threadSummaries(
 ): Promise<MessageSummary[]> {
   let uids: number[];
   if (connection.capabilities.has('X-GM-EXT-1') && threadId !== undefined) {
-    uids = await client.search(connection, { threadId });
+    uids = await client.search(connection, { threadId }, 'empty');
   } else {
     const ids = threadIdsOf({
       messageId: rendered.metadata.messageId,
       references: rendered.metadata.references,
     }).slice(0, MAX_THREAD_TERMS);
     if (ids.length === 0) return [];
-    uids = await client.search(connection, {
-      or: ids.flatMap((id) => [
-        { header: { 'message-id': id } },
-        { header: { references: id } },
-        { header: { 'in-reply-to': id } },
-      ]),
-    });
+    uids = await client.search(
+      connection,
+      {
+        or: ids.flatMap((id) => [
+          { header: { 'message-id': id } },
+          { header: { references: id } },
+          { header: { 'in-reply-to': id } },
+        ]),
+      },
+      'empty'
+    );
   }
   const messages = await client.fetchSummaries(
     connection,

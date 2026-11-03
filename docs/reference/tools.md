@@ -16,7 +16,7 @@ Registered always.
 | ------------------- | -------------------------------------------------------------------------------------------------------- |
 | `list_mailboxes`    | The folder tree, with the special-use flags the server reports (`\Drafts`, `\Sent`, …). **essential**     |
 | `list_new_messages` | What the assistant has not seen yet, tracked with its own IMAP keyword rather than `\Seen`. **essential** |
-| `list_messages`     | Search and list a mailbox: by sender, subject, date range, flags. **essential**                           |
+| `list_messages`     | Search and list a mailbox: by sender, subject, date range, flags, or a Gmail query. **essential**        |
 | `get_message`       | One message, body fenced as untrusted content. **essential**                                             |
 | `get_attachments`   | Attachment metadata, small ones inline, and the text of a PDF or Office file with `mode: "text"`         |
 | `get_server_info`   | Capabilities, the mailbox in use, and whether the write tools are registered                             |
@@ -50,6 +50,37 @@ Every tool declares all four MCP annotations — `readOnlyHint`, `destructiveHin
 `idempotentHint`, `openWorldHint`. `get_attachments` carries the only *computed* one in
 the family: it is `readOnlyHint: true` until `IMAP_DOWNLOAD_DIR` is set, because from
 then on it writes files.
+
+## Native Gmail search
+
+`list_messages` accepts an optional `gmail_query` for Gmail's native search
+syntax, for example:
+
+```json
+{
+  "gmail_query": "has:attachment filename:pdf after:2024/01/01",
+  "limit": 20
+}
+```
+
+The server must advertise `X-GM-EXT-1`; otherwise the tool returns an error
+without running a search. The query is passed through ImapFlow as `X-GM-RAW`,
+combined with the other filters using AND, and restricted to the selected
+mailbox. A query such as `in:anywhere` does not expand that mailbox selection.
+Queries must be nonblank, at most 256 characters, and contain no CR, LF or NUL.
+The existing summary-only results and `offset`/`next_offset` pagination apply.
+`get_server_info` lists the server's capabilities, so whether `X-GM-EXT-1` is there
+can be checked first. To search the whole account rather than one label, pass the
+folder `list_mailboxes` reports with the special-use flag `\All` as `mailbox` — it
+is `[Gmail]/All Mail` in English and has a localized name in other languages, such
+as `[Gmail]/Alle Nachrichten`. Gmail does not refuse a malformed query — it ignores
+what it cannot parse, so `from:` or an unbalanced `(` on its own matches every
+message in the folder. A query a server does refuse comes back as an error, not as
+zero matches.
+This exposes Gmail's search syntax; it does not add semantic search or guarantee
+that a broad query will be fast.
+
+See [Google's IMAP extensions](https://developers.google.com/workspace/gmail/imap/imap-extensions#extension_of_the_search_command_x-gm-raw).
 
 ## Reading a document
 
