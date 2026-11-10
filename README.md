@@ -279,6 +279,14 @@ have:
 the same thing as `*_ALLOW_TOOLS` in `env` — the difference, and the mistake it invites,
 are in the [client guide](https://imap-mcp.ni-c.de/guide/clients#through-mcp-hub).
 
+
+### Spawning clients
+
+A client that starts the server process itself — an agent runner, a tray app —
+should not spawn `npx -y`: it wants a pinned install and one config entry per
+account. The [spawning-client
+guide](https://imap-mcp.ni-c.de/guide/spawning-client) has the recipe — pinned
+install, per-account config entries, and the multi-account group companion.
 ## Tools
 
 **Read** — always registered
