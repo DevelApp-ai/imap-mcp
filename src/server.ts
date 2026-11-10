@@ -5,7 +5,8 @@ import { buildToolFilter, installToolFilter } from 'mcp-tool-allowlist';
 import { catalogueFor } from './tools/catalogue.js';
 
 import type { Config } from './config.js';
-import { ConfirmationStore, createApproval } from 'mcp-approval';
+import { createApproval } from 'mcp-approval';
+import { TrackedConfirmations } from './confirmations.js';
 import { ImapClient, type ImapClientFactory } from './imap.js';
 import { registerAttachmentResources } from './resources.js';
 import { registerReadTools } from './tools/read.js';
@@ -67,7 +68,7 @@ export function createServer(config: Config, deps: ServerDeps = {}): McpServer {
     deps.imapFactory === undefined
       ? new ImapClient(config)
       : new ImapClient(config, deps.imapFactory);
-  const confirmations = new ConfirmationStore();
+  const confirmations = new TrackedConfirmations();
   // One approver per server: it holds the key that seals the request state
   // carried out through the client and back.
   const approval = createApproval({

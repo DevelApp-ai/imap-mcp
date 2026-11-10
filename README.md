@@ -94,7 +94,10 @@ IMAP keyword (`AiSeen` by default), so `list_new_messages` returns each message 
 `move_messages` and deleting a folder raise a real dialog that the model cannot answer on its
 behalf. Where it does not, they fall back to a two-call token — and say so, rather than implying
 somebody approved. `ELICITATION=false` takes that fallback deliberately; it never removes the
-guard. See [Asking a person](https://imap-mcp.ni-c.de/guide/approval).
+guard. The fallback prompt is machine-readable too: beside the prose it carries
+`structuredContent` naming `confirmation_required`, the `confirm_token` and its expiry, so a
+bounded agent loop can detect it and re-issue the call without parsing a sentence — counting
+the extra call in its budget. See [Asking a person](https://imap-mcp.ni-c.de/guide/approval).
 
 ## Requirements
 
