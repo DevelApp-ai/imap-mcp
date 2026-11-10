@@ -1,0 +1,144 @@
+# Spawning clients
+
+Every recipe on [Connecting
+clients](https://imap-mcp.ni-c.de/guide/clients) ends in `npx -y
+@ni-c/imap-mcp`, and for a chat client that is the right trade: the package is
+fetched when the client starts, and a person noticed the update. A **spawning
+client** — an agent runner, a tray app, anything that owns its own tool calls
+and starts the server process itself — plays a different game. It runs
+unattended, it may run several copies at once, and a package resolved *at
+spawn time* is a version nobody reviewed. Install once, pinned, and spawn a
+plain `node` process.
+
+## Install once, pinned
+
+The npm package ships its built output (`files` is just `dist/`), so an
+install — global, or `--prefix` into a directory your client owns — is
+complete: nothing is fetched later. Install at an exact version and spawn the
+installed file, not a shim:
+
+```sh
+# Linux
+npm install --prefix /opt/mcp/imap-mcp @ni-c/imap-mcp@0.7.0
+node /opt/mcp/imap-mcp/node_modules/@ni-c/imap-mcp/dist/index.js
+```
+
+```powershell
+# Windows (PowerShell)
+npm install --prefix C:\mcp\imap-mcp @ni-c/imap-mcp@0.7.0
+node C:\mcp\imap-mcp\node_modules\@ni-c\imap-mcp\dist\index.js
+```
+
+Pin the exact version. A bare package name or a range installs whatever
+satisfies it that day — which is the same objection as `npx -y`, one step
+removed: the registry decides nothing at spawn time, and the moment you review
+is the moment you install.
+
+A source checkout — a fork, or a commit you reviewed — reaches the same
+spawn target one build later. The repository does not build on install:
+`dist/` is gitignored and there is no `prepare` script, so
+`npm install github:ni-c/imap-mcp` installs a package whose binary is not
+there. Build once per machine:
+
+```sh
+git clone https://github.com/ni-c/imap-mcp.git
+cd imap-mcp
+git checkout v0.7.0
+npm ci && npm run build
+node dist/index.js
+```
+
+## Node 24
+
+`engines` in `package.json` asks for Node 24 or newer, and the spawning client
+starts `node` itself, so the `node` on the client's `PATH` decides whether the
+server starts. Provision it once per OS: on a dual-boot machine the two
+installs are independent, because each OS sees only its own disk. Then check
+the one that counts — a client inherits the environment it was started in, so
+a tray app launched by the desktop session resolves `PATH` the way the session
+does, not the way your shell does. `node -v` in that environment settles it.
+
+## One server per account
+
+Several IMAP accounts are several servers, one process each, each configured
+in the client's own config as one `{ name, command, args, env }` entry:
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "mail-work",
+      "command": "node",
+      "args": [
+        "C:\\mcp\\imap-mcp\\node_modules\\@ni-c\\imap-mcp\\dist\\index.js"
+      ],
+      "env": {
+        "IMAP_HOST": "imap.example.net",
+        "IMAP_USER": "work@example.net",
+        "IMAP_PASSWORD": "…"
+      }
+    },
+    {
+      "name": "mail-private",
+      "command": "node",
+      "args": [
+        "C:\\mcp\\imap-mcp\\node_modules\\@ni-c\\imap-mcp\\dist\\index.js"
+      ],
+      "env": {
+        "IMAP_HOST": "imap.example.net",
+        "IMAP_USER": "me@example.net",
+        "IMAP_PASSWORD": "…"
+      }
+    }
+  ]
+}
+```
+
+On Linux, `args` is the POSIX install path from the first code block. The
+`…` for `IMAP_PASSWORD` is not a value you write: a spawning client that owns
+a credential store — Windows Credential Manager, the Secret Service on
+Linux — injects the secret when it builds the child's environment, and the config
+carries the placeholder and nothing else. If your client has no credential
+store, treat its config accordingly: a file that contains the password
+verbatim is a file you can no longer commit, back up, or paste into an issue.
+
+## Groups: four schemas, however many accounts
+
+N accounts is N×tool schemas in the model's context, and a local model pays
+for that more than a cloud one. A client that aggregates same-kind servers can
+collect them into one named group — addressed exactly like a server, exposing
+a handful of meta-tools: list the members, list one member's tools, load one
+tool's schema, call one tool. The context holds four schemas regardless of N.
+(The networked shape of the same idea is [mcp-hub](https://mcp-hub.ni-c.de)'s
+`/hub` endpoint; a group does it in-process, on the client's side.)
+
+A client with server groups — Taskhandler's `mcp.groups`, for instance —
+configures the collection beside the server entries:
+
+```json
+{
+  "mcp": {
+    "groups": {
+      "Mail": { "Servers": ["mail-work", "mail-private"] }
+    }
+  }
+}
+```
+
+## Unattended defaults
+
+Two defaults matter when nobody is watching the process:
+
+- The write tools are off: `IMAP_READ_ONLY` defaults to `true`, so a spawned
+  server is read-only until you turn that off on purpose.
+- `ELICITATION` defaults to `true`, which asks a person through the client when
+  a write tool does something a mailbox does not undo. A client with nobody on
+  the other end sets `ELICITATION=false` and takes the two-call token flow
+  instead — see [Asking a
+  person](https://imap-mcp.ni-c.de/guide/approval).
+
+The handshake needs no attention either: the stdio entry echoes a supported
+revision and counteroffers 2025-11-25 on anything else, so a minimal client —
+`initialize`, `tools/list`, `tools/call`, `notifications`, nothing else —
+never has to negotiate. The full list is in the README's [Protocol
+revisions](https://github.com/ni-c/imap-mcp#protocol-revisions) section.

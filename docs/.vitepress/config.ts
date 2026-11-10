@@ -58,6 +58,7 @@ export default defineConfig({
             { text: 'What is imap-mcp?', link: '/guide/' },
             { text: 'Getting started', link: '/guide/getting-started' },
             { text: 'Connecting clients', link: '/guide/clients' },
+            { text: 'Spawning clients', link: '/guide/spawning-client' },
           ],
         },
         {
