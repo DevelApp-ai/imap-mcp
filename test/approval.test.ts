@@ -1,3 +1,4 @@
+import type { CallToolResult } from '@modelcontextprotocol/client';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -19,6 +20,18 @@ function mailboxes() {
 }
 
 const writeConfig = { readOnly: false };
+
+/**
+ * The structured half of a fallback prompt, for a loop that reads fields
+ * rather than prose.
+ */
+function structuredOf(result: CallToolResult): Record<string, unknown> {
+  const structured = result.structuredContent;
+  if (structured === undefined) {
+    throw new Error(`no structuredContent in: ${textOf(result).slice(0, 120)}`);
+  }
+  return structured as Record<string, unknown>;
+}
 
 describe('delete_messages with elicitation', () => {
   it('asks the user and deletes once they accept', async () => {
@@ -161,6 +174,105 @@ describe('fallback where the client cannot ask', () => {
     expect(
       harness.imap.calls.some((entry) => entry.name === 'messageDelete')
     ).toBe(false);
+    await harness.close();
+  });
+});
+
+describe('the token, machine-read', () => {
+  it('carries the requirement as fields, and the structured token carries the call out', async () => {
+    const harness = await connect({
+      config: writeConfig,
+      mailboxes: mailboxes(),
+    });
+    const first = await call(harness.client, 'delete_messages', { uids: [2] });
+    const structured = structuredOf(first);
+    expect(structured['confirmation_required']).toBe(true);
+    expect(structured['tool']).toBe('delete_messages');
+    expect(structured['confirm_token']).toBe(tokenOf(first));
+    expect(structured['expires_in_minutes']).toBeGreaterThan(0);
+    const second = await call(harness.client, 'delete_messages', {
+      uids: [2],
+      confirm_token: structured['confirm_token'] as string,
+    });
+    expect(jsonOf(second)).toMatchObject({ action: 'deleted' });
+    await harness.close();
+  });
+
+  it('keeps the guard with ELICITATION=false, structured the same way', async () => {
+    const harness = await connect({
+      config: { readOnly: false, elicitation: false },
+      mailboxes: mailboxes(),
+    });
+    const first = await call(harness.client, 'delete_messages', { uids: [2] });
+    // The text says the dialog was switched off, not that the client cannot ask.
+    expect(textOf(first)).toContain('switched off');
+    const structured = structuredOf(first);
+    expect(structured['confirmation_required']).toBe(true);
+    const second = await call(harness.client, 'delete_messages', {
+      uids: [2],
+      confirm_token: structured['confirm_token'] as string,
+    });
+    expect(jsonOf(second)).toMatchObject({ action: 'deleted' });
+    await harness.close();
+  });
+
+  it('marks the copy fallback too, with the mode in the key', async () => {
+    const harness = await connect({
+      config: writeConfig,
+      mailboxes: mailboxes(),
+    });
+    const first = await call(harness.client, 'move_messages', {
+      uids: [2],
+      destination: 'Archive',
+      mode: 'copy',
+    });
+    const structured = structuredOf(first);
+    expect(structured['tool']).toBe('move_messages');
+    const second = await call(harness.client, 'move_messages', {
+      uids: [2],
+      destination: 'Archive',
+      mode: 'copy',
+      confirm_token: structured['confirm_token'] as string,
+    });
+    expect(jsonOf(second)).toMatchObject({ action: 'copied' });
+    await harness.close();
+  });
+
+  it('carries the rename token as fields as well', async () => {
+    const harness = await connect({
+      config: writeConfig,
+      mailboxes: mailboxes(),
+      elicit: 'accept',
+    });
+    const first = await call(harness.client, 'manage_mailbox', {
+      action: 'rename',
+      mailbox: 'Archive',
+      new_name: 'Old',
+    });
+    const structured = structuredOf(first);
+    expect(structured['tool']).toBe('manage_mailbox');
+    const second = await call(harness.client, 'manage_mailbox', {
+      action: 'rename',
+      mailbox: 'Archive',
+      new_name: 'Old',
+      confirm_token: structured['confirm_token'] as string,
+    });
+    expect(jsonOf(second)).toMatchObject({ action: 'rename' });
+    expect(
+      harness.imap.calls.some((entry) => entry.name === 'mailboxRename')
+    ).toBe(true);
+    await harness.close();
+  });
+
+  it('marks nothing on a declined dialog — no token was issued', async () => {
+    const harness = await connect({
+      config: writeConfig,
+      mailboxes: mailboxes(),
+      elicit: 'decline',
+    });
+    const result = await call(harness.client, 'delete_messages', { uids: [2] });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
     await harness.close();
   });
 });

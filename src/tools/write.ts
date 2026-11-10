@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { confirmationPrompt, setResourceKey } from 'mcp-approval';
-import type { Approver, ConfirmationStore } from 'mcp-approval';
+import type { Approver } from 'mcp-approval';
 import {
   addressListParam,
   confirmTokenParam,
@@ -16,6 +16,8 @@ import { escapeInvisible, sanitizeText, stripInvisible } from '../analyze.js';
 import { audit, auditedWrite } from '../audit.js';
 import type { Config } from '../config.js';
 import type { ModeFilter } from '../mode-filter.js';
+import type { TrackedConfirmations } from '../confirmations.js';
+import { withStructuredConfirmation } from '../confirmations.js';
 import { ToolInputError } from '../errors.js';
 import {
   canStoreFlag,
@@ -140,7 +142,7 @@ export function registerWriteTools(
   client: ImapClient,
   config: Config,
   modes: ModeFilter,
-  confirmations: ConfirmationStore,
+  confirmations: TrackedConfirmations,
   approval: Approver
 ): void {
   server.registerTool(
@@ -358,6 +360,10 @@ export function registerWriteTools(
         // The key covers the exact UID set and both mailboxes: a confirmation
         // for [1] must not execute [1, 2], where the model picked the second
         // list, and one for Archive must not execute against Public/Shared.
+        const resourceKey = setResourceKey(
+          `${copying ? 'copy_messages' : 'move_messages'}:${JSON.stringify([source, destination])}`,
+          uids.map(String)
+        );
         const outcome = await approval.requestApproval(
           server,
           mcp,
@@ -373,10 +379,7 @@ export function registerWriteTools(
             // ("A:B", "C") and the pair ("A", "B:C") produced the same key, so
             // a token or sealed answer issued for one would have executed the
             // other, a pair nobody was ever asked about.
-            resourceKey: setResourceKey(
-              `${copying ? 'copy_messages' : 'move_messages'}:${JSON.stringify([source, destination])}`,
-              uids.map(String)
-            ),
+            resourceKey,
             token: confirm_token,
             details: [
               { label: 'From', value: shownValue(source) },
@@ -399,7 +402,14 @@ export function registerWriteTools(
             'imap-mcp: the user declined. Nothing was moved.'
           );
         }
-        if (outcome.decision === 'pending') return outcome.result;
+        if (outcome.decision === 'pending') {
+          return withStructuredConfirmation(
+            outcome.result,
+            resourceKey,
+            'move_messages',
+            confirmations
+          );
+        }
 
         return client.withMailbox(
           mailbox,
@@ -513,6 +523,10 @@ export function registerWriteTools(
           mcp.mcpReq.signal,
           (connection) => refuseStrayDeleted(client, connection, uids, 'delete')
         );
+        const resourceKey = setResourceKey(
+          `delete_messages:${source}`,
+          uids.map(String)
+        );
         const outcome = await approval.requestApproval(
           server,
           mcp,
@@ -521,10 +535,7 @@ export function registerWriteTools(
             what: `Permanently delete ${uids.length} message(s) (UIDs ${uids.slice(0, 20).join(', ')}${uids.length > 20 ? ', …' : ''})`,
             consequence:
               'The messages are expunged, not moved to Trash. They cannot be recovered from here.',
-            resourceKey: setResourceKey(
-              `delete_messages:${source}`,
-              uids.map(String)
-            ),
+            resourceKey,
             token: confirm_token,
             toolName: 'delete_messages',
             details: [{ label: 'Mailbox', value: shownValue(source) }],
@@ -538,7 +549,14 @@ export function registerWriteTools(
             'imap-mcp: the user declined. Nothing was changed.'
           );
         }
-        if (outcome.decision === 'pending') return outcome.result;
+        if (outcome.decision === 'pending') {
+          return withStructuredConfirmation(
+            outcome.result,
+            resourceKey,
+            'delete_messages',
+            confirmations
+          );
+        }
 
         return client.withMailbox(
           mailbox,
@@ -615,6 +633,7 @@ export function registerWriteTools(
         }
 
         if (action === 'delete') {
+          const resourceKey = `manage_mailbox:delete:${mailbox}`;
           const outcome = await approval.requestApproval(
             server,
             mcp,
@@ -623,7 +642,7 @@ export function registerWriteTools(
               what: 'Delete a mailbox',
               consequence:
                 'Every message in the folder is deleted with it, and it cannot be recovered from here.',
-              resourceKey: `manage_mailbox:delete:${mailbox}`,
+              resourceKey,
               token: confirm_token,
               toolName: 'manage_mailbox',
               details: [{ label: 'Mailbox', value: shownValue(mailbox) }],
@@ -637,7 +656,14 @@ export function registerWriteTools(
               'imap-mcp: the user declined. Nothing was changed.'
             );
           }
-          if (outcome.decision === 'pending') return outcome.result;
+          if (outcome.decision === 'pending') {
+            return withStructuredConfirmation(
+              outcome.result,
+              resourceKey,
+              'manage_mailbox',
+              confirmations
+            );
+          }
         } else if (action === 'rename') {
           // JSON-encoded for the same reason as the move key above: a ':' in
           // either name must not let two different renames share a token.
@@ -647,19 +673,24 @@ export function registerWriteTools(
             // was asked for and did not happen. It is also what lets this tool
             // declare an output schema — the SDK requires `structuredContent`
             // from a tool that has one, and a prompt has none to give.
-            return errorResult(
-              confirmationPrompt({
-                what: 'rename a mailbox',
-                token: confirmations.issue(key),
-                ttlMinutes: confirmations.ttlMinutes,
-                consequence:
-                  'Clients that cached the old path will have to resynchronise.',
-                details: [
-                  { label: 'Mailbox', value: shownValue(mailbox) },
-                  { label: 'New name', value: shownValue(new_name ?? '') },
-                ],
-                toolName: 'manage_mailbox',
-              })
+            return withStructuredConfirmation(
+              errorResult(
+                confirmationPrompt({
+                  what: 'rename a mailbox',
+                  token: confirmations.issue(key),
+                  ttlMinutes: confirmations.ttlMinutes,
+                  consequence:
+                    'Clients that cached the old path will have to resynchronise.',
+                  details: [
+                    { label: 'Mailbox', value: shownValue(mailbox) },
+                    { label: 'New name', value: shownValue(new_name ?? '') },
+                  ],
+                  toolName: 'manage_mailbox',
+                })
+              ),
+              key,
+              'manage_mailbox',
+              confirmations
             );
           }
         }
