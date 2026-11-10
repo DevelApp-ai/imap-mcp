@@ -83,6 +83,35 @@ turn without anybody seeing it. It catches a widened target set; it does not
 catch a model that was talked into the whole thing. The fallback text says so
 rather than implying somebody approved.
 
+## The token, machine-read
+
+The fallback prompt is prose a model must re-read and obey — fine for a
+human-driven session, hostile to a bounded agent loop: every confirmation
+costs one of the loop's tool calls, and the loop cannot tell a prompt from a
+failure without parsing the text. So the same result also carries the
+requirement as fields, in `structuredContent`:
+
+```json
+{
+  "confirmation_required": true,
+  "tool": "delete_messages",
+  "confirm_token": "6bd133a04a4f40c7b13f8aa1e6c1a216",
+  "expires_in_minutes": 5
+}
+```
+
+The fields say exactly what to do: call `tool` again with the same arguments
+plus `confirm_token` as the tool's `confirm_token` argument, within
+`expires_in_minutes`. The token is single-use and bound to the exact
+arguments — one issued for `[2]` will not execute `[2, 3]` — so a loop that
+re-issues deterministically is safe where a model paraphrasing prose is not.
+
+The result is still an error result, as it always was: the operation was
+asked for and did not happen. A loop that budgets its calls should count each
+guarded operation as two — one for the prompt, one that carries it out — and
+a loop that cannot afford the second call should treat the first as a refusal,
+not as progress.
+
 ## Switching the dialog off
 
 ```sh
