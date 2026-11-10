@@ -5,6 +5,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { loadConfig } from './config.js';
 import { createServer, imapClientOf } from './server.js';
 import { createShutdown } from './shutdown.js';
+import { ModeFilterError } from './mode-filter.js';
 import { ToolFilterError } from 'mcp-tool-allowlist';
 
 const servers = new Set<McpServer>();
@@ -46,8 +47,11 @@ async function main(): Promise<void> {
     pending = createServer(config);
     servers.add(pending);
   } catch (error) {
-    // A bad tool list is operator feedback, not a crash.
-    if (error instanceof ToolFilterError) {
+    // A bad list — tools or modes — is operator feedback, not a crash.
+    if (
+      error instanceof ToolFilterError ||
+      error instanceof ModeFilterError
+    ) {
       console.error(`imap-mcp: ${error.message}`);
       process.exit(1);
     }

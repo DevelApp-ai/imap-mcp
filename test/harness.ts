@@ -40,6 +40,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     elicitation: overrides.elicitation ?? true,
     allowTools: overrides.allowTools,
     denyTools: overrides.denyTools,
+    allowModes: overrides.allowModes,
+    denyModes: overrides.denyModes,
   };
 }
 

@@ -8,6 +8,7 @@ import type { Config } from './config.js';
 import { createApproval } from 'mcp-approval';
 import { TrackedConfirmations } from './confirmations.js';
 import { ImapClient, type ImapClientFactory } from './imap.js';
+import { buildModeFilter } from './mode-filter.js';
 import { registerAttachmentResources } from './resources.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
@@ -64,6 +65,17 @@ export function createServer(config: Config, deps: ServerDeps = {}): McpServer {
     },
   });
 
+  // Built beside the tool filter, for the same reason: a rejected list ends
+  // the process at start-up, not as a refusal on the first call. And it is
+  // built whether or not the write tools are registered — a typo in the
+  // mode lists is a typo under the read-only default too.
+  const modes = buildModeFilter({
+    allowModes: config.allowModes,
+    denyModes: config.denyModes,
+    tool: 'move_messages',
+    server: 'imap-mcp',
+  });
+
   const client =
     deps.imapFactory === undefined
       ? new ImapClient(config)
@@ -107,7 +119,7 @@ export function createServer(config: Config, deps: ServerDeps = {}): McpServer {
   // Wraps server.registerTool, so it has to sit before the first register call.
   installToolFilter(server, filter);
 
-  registerReadTools(server, client, config);
+  registerReadTools(server, client, config, modes);
   // The attachment resources are the same door as get_attachments, so the
   // filter has to close both. It used to cover tools only, which meant
   // IMAP_DENY_TOOLS=get_attachments removed the tool from tools/list and left
@@ -121,7 +133,7 @@ export function createServer(config: Config, deps: ServerDeps = {}): McpServer {
   // Rejecting them at call time would still advertise capabilities the server
   // refuses to provide, and a tool the model can see is a tool it will try.
   if (!config.readOnly) {
-    registerWriteTools(server, client, config, confirmations, approval);
+    registerWriteTools(server, client, modes, config, confirmations, approval);
   }
 
   clients.set(server, client);

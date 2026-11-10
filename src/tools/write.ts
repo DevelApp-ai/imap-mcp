@@ -18,6 +18,7 @@ import type { Config } from '../config.js';
 import type { TrackedConfirmations } from '../confirmations.js';
 import { withStructuredConfirmation } from '../confirmations.js';
 import { ToolInputError } from '../errors.js';
+import type { ModeFilter } from '../mode-filter.js';
 import {
   canStoreFlag,
   ImapClient,
@@ -101,9 +102,45 @@ function shownValue(raw: string): string {
     : `${visible} — as written: ${escapeInvisible(raw)}`;
 }
 
+/**
+ * The `move_messages` description this configuration may honestly show.
+ *
+ * A description that advertises a mode the policy refuses invites a plan
+ * around it that fails at the boundary, so a switched-off mode is named as
+ * switched off rather than presented as a choice — the same rule that
+ * keeps an unregistered tool out of `tools/list` entirely.
+ */
+function moveDescription(modes: ModeFilter): string {
+  if (modes.allows('move') && modes.allows('copy')) {
+    return (
+      'Moves messages to another mailbox, or copies them when mode is ' +
+      '"copy". Both ask the user to confirm; where the client cannot show a ' +
+      'prompt, they fall back to a two-call token — call once to receive it, ' +
+      'then again with that token and the same UID list and destination.'
+    );
+  }
+  const confirmation =
+    'Asks the user to confirm; where the client cannot show a prompt, it ' +
+    'falls back to a two-call token — call once to receive it, then again ' +
+    'with that token and the same UID list and destination.';
+  if (modes.allows('copy')) {
+    return (
+      'Copies messages to another mailbox — mode "copy"; the default ' +
+      '("move") is switched off on this server and refused. ' +
+      confirmation
+    );
+  }
+  return (
+    'Moves messages to another mailbox. Copying (mode "copy") is switched ' +
+    'off on this server and refused. ' +
+    confirmation
+  );
+}
+
 export function registerWriteTools(
   server: McpServer,
   client: ImapClient,
+  modes: ModeFilter,
   config: Config,
   confirmations: TrackedConfirmations,
   approval: Approver
@@ -241,11 +278,7 @@ export function registerWriteTools(
     'move_messages',
     {
       title: 'Move or copy messages',
-      description:
-        'Moves messages to another mailbox, or copies them when mode is ' +
-        '"copy". Both ask the user to confirm; where the client cannot show a ' +
-        'prompt, they fall back to a two-call token — call once to receive it, ' +
-        'then again with that token and the same UID list and destination.',
+      description: moveDescription(modes),
       inputSchema: z.object({
         uids: uidListParam,
         destination: mailboxParam.describe(
@@ -286,6 +319,13 @@ export function registerWriteTools(
     async ({ uids, destination, mailbox, mode, confirm_token }, mcp) =>
       run(async () => {
         const copying = mode === 'copy';
+        // The mode lists are enforced here rather than in the schema, for the
+        // same reason \Deleted is in set_message_flags: a schema refusal
+        // answers with a validation error that names nothing, and the model
+        // would have no way to learn that the other mode is available.
+        if (!modes.allows(copying ? 'copy' : 'move')) {
+          throw new ToolInputError(modes.refusal(copying ? 'copy' : 'move'));
+        }
         const source = mailbox ?? client.defaultMailbox;
         // Before the dialog: a copy onto itself duplicates every message, and
         // a move onto itself on a server without MOVE is COPY, flag and

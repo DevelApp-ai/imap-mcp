@@ -58,6 +58,7 @@ import {
 import { audit, auditedWrite } from '../audit.js';
 import { READ_ONLY } from './annotations.js';
 import type { Config } from '../config.js';
+import type { ModeFilter } from '../mode-filter.js';
 import { saveAttachment } from '../download.js';
 import { downloadCapped } from '../stream.js';
 import { ToolInputError } from '../errors.js';
@@ -121,7 +122,8 @@ const UNTRUSTED_IMAGE_WARNING =
 export function registerReadTools(
   server: McpServer,
   client: ImapClient,
-  config: Config
+  config: Config,
+  modes: ModeFilter
 ): void {
   server.registerTool(
     'get_server_info',
@@ -130,8 +132,9 @@ export function registerReadTools(
       description:
         'Reports what this account and server can do: the configured mailbox, ' +
         'IMAP capabilities, which flags the mailbox stores permanently, whether ' +
-        'the new-mail keyword can be used, and which tool groups are enabled. ' +
-        'Start here when a call fails for reasons that sound like configuration.',
+        'the new-mail keyword can be used, which tool groups are enabled and ' +
+        'which modes of move_messages are allowed. Start here when a call ' +
+        'fails for reasons that sound like configuration.',
       inputSchema: z.object({}),
       annotations: READ_ONLY,
       // Marked untrusted: most fields are this server's own configuration, but
@@ -161,6 +164,15 @@ export function registerReadTools(
           storable: z.boolean().optional(),
         }),
         write_tools_enabled: z.boolean(),
+        // The mode lists can narrow move_messages further than any tool
+        // list can — one tool, two modes — and this is where a caller that
+        // was refused learns which of them it may use.
+        allowed_modes: z
+          .array(z.enum(['move', 'copy']))
+          .describe(
+            'The modes of move_messages this server allows, set through ' +
+              'IMAP_ALLOW_MODES and IMAP_DENY_MODES.'
+          ),
         can_send_mail: z
           .literal(false)
           .describe('This server cannot send mail at all, by design.'),
@@ -242,6 +254,7 @@ export function registerReadTools(
                   storable: client.keywordSupported(rawFlags),
                 },
           write_tools_enabled: !config.readOnly,
+          allowed_modes: [...modes.allowed],
           // This server cannot send mail at all — see SECURITY.md on why that
           // is a design decision rather than a missing feature.
           can_send_mail: false,
