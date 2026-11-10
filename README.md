@@ -102,6 +102,21 @@ guard. See [Asking a person](https://imap-mcp.ni-c.de/guide/approval).
 - An IMAP account. Providers with two-factor authentication generally need an app-specific
   password.
 
+## Protocol revisions
+
+The stdio entry negotiates the protocol revision on the opening exchange. An
+`initialize` that offers one of the supported revisions — 2025-11-25, 2025-06-18,
+2025-03-26, 2024-11-05 or 2024-10-07 — is answered with the same revision. Any other
+offered revision, whether a newer one the client pins or a typo, is answered with the
+counteroffer 2025-11-25, and the handshake continues on it: the server never rejects an
+`initialize` over its `protocolVersion`, and it never waits for a better one. A client
+that wants the modern 2026-07-28 revision gets it by claiming the envelope capability
+in its `server/discover` probe.
+
+`test/protocol.test.ts` holds this against a minimal JSON-RPC client — `initialize`,
+`notifications/initialized`, `tools/list` and `tools/call`, nothing else — which is the
+shape of the small stdio clients the question is about.
+
 ## Configuration
 
 | Variable                       | Required | Default       | Description                                                  |
