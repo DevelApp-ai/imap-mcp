@@ -130,6 +130,8 @@ shape of the small stdio clients the question is about.
 | `IMAP_READ_ONLY`               | no       | **`true`**    | Exactly `false` registers the five mailbox tools             |
 | `IMAP_ALLOW_TOOLS`             | no       | —             | Tool names, `list_*` prefixes or `essential`                 |
 | `IMAP_DENY_TOOLS`              | no       | —             | Same syntax; subtracted from the allow list                  |
+| `IMAP_ALLOW_MODES`             | no       | —             | Modes of `move_messages`: `move`, `copy`                     |
+| `IMAP_DENY_MODES`              | no       | —             | Same syntax; subtracted from the allow list                  |
 | `IMAP_SEEN_KEYWORD`            | no       | `AiSeen`      | Keyword for new-mail tracking; empty turns it off            |
 | `IMAP_TRUSTED_AUTHSERV_ID`     | no       | —             | The authserv-id your provider stamps; see below              |
 | `IMAP_DRAFTS_MAILBOX`          | no       | auto          | Overrides the folder found via the `\Drafts` flag            |
@@ -164,9 +166,13 @@ IMAP_ALLOW_TOOLS=list_new_messages,get_message,move_messages
 IMAP_DENY_TOOLS=delete_messages
 ```
 
-One boundary the list cannot draw: `move_messages` copies as well as moves (`mode: "copy"`),
-and the two are one tool. Denying `move_messages` removes both; there is no way to keep moving
-and forbid copying, or the other way round. Both modes ask for confirmation.
+The one boundary that list cannot draw is drawn one level down: `IMAP_ALLOW_MODES` and
+`IMAP_DENY_MODES` take the same comma-separated syntax and select the modes of
+`move_messages` — `move`, `copy` — independently of the tool filter, so `IMAP_DENY_MODES=copy`
+keeps moving while forbidding copying, and `IMAP_ALLOW_MODES=move` says the same thing
+positively. An entry that matches no mode aborts startup and names it. A denied mode is refused
+at the tool boundary, before the confirmation — which the mode that remains keeps unchanged —
+and `get_server_info` reports which modes are allowed.
 
 An entry that matches no tool aborts startup and names it, so a typo cannot silently hide a
 tool — an absent tool is not something anyone traces back to an environment variable. A

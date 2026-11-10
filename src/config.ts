@@ -93,6 +93,15 @@ export interface Config {
   allowTools: string | undefined;
   /** Raw value of `IMAP_DENY_TOOLS`, same shape, subtracted from the above. */
   denyTools: string | undefined;
+  /**
+   * Raw value of `IMAP_ALLOW_MODES` — comma-separated modes of
+   * `move_messages` (`move`, `copy`). Kept unparsed for the same reason
+   * as the tool lists: the names can only be checked against the modes
+   * the tool really has, which `buildModeFilter` does.
+   */
+  allowModes: string | undefined;
+  /** Raw value of `IMAP_DENY_MODES`, same shape, subtracted from the above. */
+  denyModes: string | undefined;
 }
 
 export const DEFAULT_ATTACHMENT_TYPES = [
@@ -159,8 +168,10 @@ export function missingConfigMessage(missing: string[]): string {
     'Optional: IMAP_PORT, IMAP_TLS (implicit|starttls|none), IMAP_MAILBOX, ' +
     'IMAP_SEEN_KEYWORD, IMAP_READ_ONLY=false to expose the mailbox write ' +
     'tools (it defaults to true), IMAP_ALLOW_TOOLS / IMAP_DENY_TOOLS to narrow ' +
-    'the tool list, IMAP_DOWNLOAD_DIR to allow saving attachments to disk, ' +
-    'IMAP_INSECURE_TLS=true to accept self-signed certificates'
+    'the tool list, IMAP_ALLOW_MODES / IMAP_DENY_MODES to keep one mode of ' +
+    'move_messages and refuse the other, IMAP_DOWNLOAD_DIR to allow saving ' +
+    'attachments to disk, IMAP_INSECURE_TLS=true to accept self-signed ' +
+    'certificates'
   );
 }
 
@@ -279,6 +290,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     elicitation,
     allowTools: env.IMAP_ALLOW_TOOLS,
     denyTools: env.IMAP_DENY_TOOLS,
+    allowModes: env.IMAP_ALLOW_MODES,
+    denyModes: env.IMAP_DENY_MODES,
   };
 
   // Silently ignoring a removed security variable is the worst of the options:

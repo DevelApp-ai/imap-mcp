@@ -142,9 +142,30 @@ IMAP_ALLOW_TOOLS=list_new_messages,get_message,move_messages
 IMAP_DENY_TOOLS=delete_messages
 ```
 
-One boundary the list cannot draw: `move_messages` copies as well as moves (`mode: "copy"`),
-and the two are one tool. Denying `move_messages` removes both; there is no way to keep moving
-and forbid copying, or the other way round. Both modes ask for confirmation.
+`move_messages` copies as well as moves (`mode: "copy"`), and the tool list cannot tell the
+two apart — denying the tool removes both. The mode lists draw exactly that boundary, with
+the same syntax and the same fail-loud rule:
+
+```sh
+IMAP_DENY_MODES=copy
+IMAP_ALLOW_MODES=move
+```
+
+Both together: the allow list selects, the deny list subtracts, exactly like the tool lists.
+An entry that matches no mode aborts startup and names it, and a pair of lists that leaves
+`move_messages` with no mode at all is refused the same way.
+
+Why one would want this is the disclosure argument the [approval guide](/guide/approval)
+makes in full: a destination is a free-form mailbox name, and copying is the mode that hands
+every named message to everyone who can read the destination while the source folder keeps
+no trace. Moving is the workflow step; copying is the one worth refusing on its own.
+
+The cut is at the tool boundary, not in the schema — the same choice as `\Deleted` in
+`set_message_flags`. A denied mode is answered with an error naming the mode that remains,
+and the error is raised before the confirmation dialog, so nobody is asked to approve a call
+the policy would then refuse. What remains keeps its guard: both modes still ask, dialog or
+token. `get_server_info` lists the modes this server allows, and the tool's description
+stops advertising a mode that is switched off.
 
 Why bother, when all of them work: a model chooses the right tool far more reliably
 from a handful than from a long list, and every tool it can see costs context on

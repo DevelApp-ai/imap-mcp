@@ -38,6 +38,11 @@ behalf. 🔒 uses the two-call `confirm_token` only. Where a 👤 tool's client 
 a dialog it falls back to 🔒, and `ELICITATION=false` takes that fallback deliberately.
 See [Asking a person](/guide/approval).
 
+`move_messages` has two modes, and the mode lists — `IMAP_ALLOW_MODES` / `IMAP_DENY_MODES`,
+same syntax as the tool lists — can keep one and refuse the other. A denied mode is an error
+naming the mode that remains, raised before the confirmation; `get_server_info` reports
+which modes are allowed.
+
 Every tool declares an `outputSchema` and answers with `structuredContent` beside
 the text block, so a client can use a result without parsing prose. Every tool
 that reports anything out of the mailbox carries `untrusted: true` and
