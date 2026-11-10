@@ -5,10 +5,10 @@ import { buildToolFilter, installToolFilter } from 'mcp-tool-allowlist';
 import { catalogueFor } from './tools/catalogue.js';
 
 import type { Config } from './config.js';
-import { buildModeFilter } from './mode-filter.js';
 import { createApproval } from 'mcp-approval';
 import { TrackedConfirmations } from './confirmations.js';
 import { ImapClient, type ImapClientFactory } from './imap.js';
+import { buildModeFilter } from './mode-filter.js';
 import { registerAttachmentResources } from './resources.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
@@ -133,7 +133,7 @@ export function createServer(config: Config, deps: ServerDeps = {}): McpServer {
   // Rejecting them at call time would still advertise capabilities the server
   // refuses to provide, and a tool the model can see is a tool it will try.
   if (!config.readOnly) {
-    registerWriteTools(server, client, config, modes, confirmations, approval);
+    registerWriteTools(server, client, modes, config, confirmations, approval);
   }
 
   clients.set(server, client);

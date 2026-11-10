@@ -15,10 +15,10 @@ import {
 import { escapeInvisible, sanitizeText, stripInvisible } from '../analyze.js';
 import { audit, auditedWrite } from '../audit.js';
 import type { Config } from '../config.js';
-import type { ModeFilter } from '../mode-filter.js';
 import type { TrackedConfirmations } from '../confirmations.js';
 import { withStructuredConfirmation } from '../confirmations.js';
 import { ToolInputError } from '../errors.js';
+import type { ModeFilter } from '../mode-filter.js';
 import {
   canStoreFlag,
   ImapClient,
@@ -140,8 +140,8 @@ function moveDescription(modes: ModeFilter): string {
 export function registerWriteTools(
   server: McpServer,
   client: ImapClient,
-  config: Config,
   modes: ModeFilter,
+  config: Config,
   confirmations: TrackedConfirmations,
   approval: Approver
 ): void {
