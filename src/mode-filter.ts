@@ -52,11 +52,14 @@ export interface ModeFilter {
  * mode-shaped is quoted in full, anything else is described by length.
  */
 function describeEntry(entry: string): string {
-  const longest = MOVE_MODES.reduce((max, mode) => Math.max(max, mode.length), 0);
+  const longest = MOVE_MODES.reduce(
+    (max, mode) => Math.max(max, mode.length),
+    0
+  );
   return entry.length <= longest && /^[a-z]+$/.test(entry)
     ? `"${entry}"`
     : `an entry of ${entry.length} characters that is not mode-shaped ` +
-      '(redacted — if you pasted a credential here, it is not in this log)';
+        '(redacted — if you pasted a credential here, it is not in this log)';
 }
 
 /**
