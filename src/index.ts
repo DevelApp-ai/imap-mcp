@@ -48,10 +48,7 @@ async function main(): Promise<void> {
     servers.add(pending);
   } catch (error) {
     // A bad list — tools or modes — is operator feedback, not a crash.
-    if (
-      error instanceof ToolFilterError ||
-      error instanceof ModeFilterError
-    ) {
+    if (error instanceof ToolFilterError || error instanceof ModeFilterError) {
       console.error(`imap-mcp: ${error.message}`);
       process.exit(1);
     }
