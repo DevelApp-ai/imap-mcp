@@ -1,0 +1,121 @@
+name: CI
+
+# The fork's merge gate: an agent-delivered pull request merges when this
+# workflow is green (org decision #29, squash per #28). Upstream's publishing
+# jobs are deliberately gone — the GHCR push to ghcr.io/ni-c/*, the npm
+# release, the docs site, the registry submission, the weekly audit run —
+# because this fork is installed from a git checkout by Taskhandler and none
+# of those pipelines can authenticate to upstream's registries anyway.
+# The quiet weeks the weekly audit used to cover are owned by Dependabot
+# (org baseline #7): an advisory on an unchanged tree arrives as an update
+# pull request, which runs this workflow.
+
+# A fresh path, not upstream's ci.yml: the old path is disabled in the
+# repository's Actions settings, and a disabled workflow does not run even
+# for a pull request that rewrites its file. Deleting the old path and
+# starting this one leaves nothing to re-enable by hand.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # One LTS major (org Node policy #20 forbids <= 20). The matrix
+          # upstream carries tests the same code twice for a package nobody
+          # publishes from here.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      # vitest transpiles without checking; this is the step that
+      # typechecks test/ too.
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      # Committed generated output is authoritative and drift-gated (#26):
+      # fail on drift rather than letting a hand edit ship.
+      - run: npm run assets:check
+
+  integration:
+    # Real IMAP against GreenMail, not a mock. The suite spawns dist/, so
+    # the build is not optional.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Start GreenMail
+        run: docker compose -f test/integration/compose.yml up -d
+      - run: npm run test:integration
+      - if: failure()
+        run: docker compose -f test/integration/compose.yml logs --tail=200
+      - if: always()
+        # `down`, not `down -v`: GreenMail keeps everything in memory.
+        run: docker compose -f test/integration/compose.yml down
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      # --ignore-scripts: an audit must not execute the code it is auditing.
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
+      # The Dockerfile stays in the fork for local container builds, so the
+      # pin discipline around its base image stays checkable.
+      - run: .github/scripts/check-base-image-pin.sh Dockerfile
+
+  dependency-review:
+    # What a pull request changes in the tree, against the advisory database;
+    # npm audit above sees the tree as it is and cannot tell a bump that
+    # introduced a vulnerable release from one that has always been there.
+    # The only pre-merge catch for an agent-driven dependency bump.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  codeql:
+    # Org security baseline #7: code scanning on every public repository.
+    # The guard rather than an unconditional run: the upload needs GitHub
+    # Advanced Security the day this repository is made private, and the
+    # guard states that instead of leaving a job that can never pass.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # init and analyze must always move together.
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
