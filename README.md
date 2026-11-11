@@ -2,7 +2,7 @@
 
 <!-- badges: start -->
 
-[![CI](https://img.shields.io/github/actions/workflow/status/ni-c/imap-mcp/ci.yml?branch=main&label=CI)](https://github.com/ni-c/imap-mcp/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/DevelApp-ai/imap-mcp/develapp-ci.yml?branch=main&label=CI)](https://github.com/DevelApp-ai/imap-mcp/actions/workflows/develapp-ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ni-c/imap-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/ni-c/imap-mcp)
 [![Socket Badge](https://badge.socket.dev/npm/package/@ni-c/imap-mcp)](https://socket.dev/npm/package/@ni-c/imap-mcp)
 [![Glama score](https://glama.ai/mcp/servers/ni-c/imap-mcp/badges/score.svg)](https://glama.ai/mcp/servers/ni-c/imap-mcp)

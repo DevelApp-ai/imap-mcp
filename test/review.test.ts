@@ -835,21 +835,27 @@ describe('what the server hands over never breaks a listing (3.8)', () => {
 /* ---------------------------------------------- supply chain tripwires -- */
 
 describe('supply chain (7.x) and the pdf.js surface', () => {
-  it('installs with --ignore-scripts wherever a token is held, and verifies the tag', async () => {
-    const release = await readFile(
-      new URL('../.github/workflows/release.yml', import.meta.url),
+  it('publishes nothing, so no token is held; the audit installs without scripts', async () => {
+    // Upstream's release pipeline is gone with the rest of its publishing
+    // jobs — this fork is installed from a git checkout — so no workflow
+    // holds a registry token, and `npm ci` in the test jobs meets nothing
+    // worth taking. The audit job still refuses install scripts: an audit
+    // that executes the tree it is auditing is not an audit.
+    const gate = await readFile(
+      new URL('../.github/workflows/develapp-ci.yml', import.meta.url),
       'utf-8'
     );
-    for (const line of release.split('\n').filter((l) => /npm ci\b/.test(l))) {
-      expect(line).toContain('--ignore-scripts');
-    }
-    expect(release).toContain('--verify-tag');
-    const ci = await readFile(
-      new URL('../.github/workflows/ci.yml', import.meta.url),
-      'utf-8'
-    );
-    expect(ci).toContain('dependency-review-action');
-    expect(ci).toContain("github.event_name == 'pull_request'");
+    expect(gate).toContain('npm ci --ignore-scripts');
+    expect(gate).toContain('npm audit --audit-level=high');
+    expect(gate).not.toContain('NPM_TOKEN');
+    // With nothing published there is no tag to verify; the absence of the
+    // pipeline is the invariant this test pins now.
+    await expect(
+      readFile(
+        new URL('../.github/workflows/release.yml', import.meta.url),
+        'utf-8'
+      )
+    ).rejects.toThrow();
   });
 
   it('removes yarn and corepack from the image and ships no lockfile', async () => {
