@@ -20,10 +20,6 @@ import { ConfirmationStore } from 'mcp-approval';
 export class TrackedConfirmations extends ConfirmationStore {
   private readonly issued = new Map<string, string>();
 
-  constructor(ttlMs?: number) {
-    super(ttlMs);
-  }
-
   /** Mints (or replaces) the pending token for a resource, and records it. */
   override issue(resource: string): string {
     const token = super.issue(resource);

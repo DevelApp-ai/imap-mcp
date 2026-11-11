@@ -159,14 +159,14 @@ describe('refusing an unusable list', () => {
   it('describes a non-mode-shaped entry rather than printing it', () => {
     // IMAP_PASSWORD sits beside these variables in every compose file, and
     // a paste into the wrong one must not end up quoted in the log.
-    let message = '';
+    let refusal = '';
     try {
       build({ ...writeConfig, denyModes: 'hunter2' });
     } catch (error) {
-      message = (error as Error).message;
+      refusal = (error as Error).message;
     }
-    expect(message).toContain('redacted');
-    expect(message).not.toContain('hunter2');
+    expect(refusal).toContain('redacted');
+    expect(refusal).not.toContain('hunter2');
   });
 });
 

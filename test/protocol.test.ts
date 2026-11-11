@@ -31,6 +31,7 @@ class RawClient {
   private readonly pending = new Map<string, (reply: JSONRPCMessage) => void>();
 
   constructor(private readonly transport: InMemoryTransport) {
+    // oxlint-disable-next-line unicorn/prefer-add-event-listener -- InMemoryTransport is not an EventTarget; onmessage is its only message hook
     transport.onmessage = (message) => {
       if (
         !isJSONRPCResultResponse(message) &&
